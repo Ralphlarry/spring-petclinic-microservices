@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: visits-service
+  namespace: petclinic
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: visits-service
+
+  template:
+    metadata:
+      labels:
+        app: visits-service
+
+    spec:
+      imagePullSecrets:
+        - name: ecr-secret
+
+      containers:
+        - name: visits-service
+
+          image: 524338476341.dkr.ecr.eu-central-1.amazonaws.com/petclinic-visits-service:4.0.1
+
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 8082
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            initialDelaySeconds: 60
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            initialDelaySeconds: 120
+            periodSeconds: 20

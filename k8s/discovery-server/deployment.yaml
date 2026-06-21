@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discovery-server
+  namespace: petclinic
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discovery-server
+  template:
+    metadata:
+      labels:
+        app: discovery-server
+    spec:
+      imagePullSecrets:
+      - name: ecr-secret
+
+      containers:
+      - name: discovery-server
+        image: 524338476341.dkr.ecr.eu-central-1.amazonaws.com/petclinic-discovery-server:4.0.1
+
+        ports:
+        - containerPort: 8761
+
+        env:
+        - name: CONFIG_SERVER_URL
+          value: http://config-server:8888
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8761
+          initialDelaySeconds: 90
+          periodSeconds: 10
+
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8761
+          initialDelaySeconds: 180
+          periodSeconds: 20
