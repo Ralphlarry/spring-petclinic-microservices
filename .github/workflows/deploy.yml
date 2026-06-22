@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - feature/aws-eks-production-deployment
-      
+
 env:
   AWS_REGION: eu-central-1
   ECR_REGISTRY: 524338476341.dkr.ecr.eu-central-1.amazonaws.com
@@ -134,18 +134,20 @@ jobs:
           set -e
 
           for repo in \
-          petclinic-config-server \
-          petclinic-discovery-server \
-          petclinic-customers-service \
-          petclinic-vets-service \
-          petclinic-visits-service \
-          petclinic-admin-server \
-          petclinic-api-gateway
+            petclinic-config-server \
+            petclinic-discovery-server \
+            petclinic-customers-service \
+            petclinic-vets-service \
+            petclinic-visits-service \
+            petclinic-admin-server \
+            petclinic-api-gateway
           do
+            echo "Checking $repo..."
+
             aws ecr describe-images \
-              --repository-name "$repo" \
-              --query "imageDetails[].imageTags" \
-              --output table
+            --repository-name "$repo" \
+            --query "sort_by(imageDetails,& imagePushedAt)[-1].imageTags" \
+            --output json
           done
 
       - name: Update Kubernetes Manifests
