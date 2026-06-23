@@ -18,7 +18,7 @@ spec:
 
       containers:
         - name: vets-service
-          image: 524338476341.dkr.ecr.eu-central-1.amazonaws.com/petclinic-vets-service:4.0.1
+          image: 524338476341.dkr.ecr.eu-central-1.amazonaws.com/petclinic-vets-service:latest
 
           ports:
             - containerPort: 8083

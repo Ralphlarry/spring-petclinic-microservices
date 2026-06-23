@@ -23,7 +23,7 @@ spec:
 
       containers:
         - name: admin-server
-          image: 524338476341.dkr.ecr.eu-central-1.amazonaws.com/petclinic-admin-server:4.0.1
+          image: 524338476341.dkr.ecr.eu-central-1.amazonaws.com/petclinic-admin-server:latest
           imagePullPolicy: Always
 
           ports:

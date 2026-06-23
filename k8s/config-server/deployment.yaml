@@ -29,7 +29,7 @@ spec:
 
       containers:
         - name: config-server
-          image: 524338476341.dkr.ecr.eu-central-1.amazonaws.com/petclinic-config-server:4.0.2
+          image: 524338476341.dkr.ecr.eu-central-1.amazonaws.com/petclinic-config-server:latest
 
           imagePullPolicy: Always
 

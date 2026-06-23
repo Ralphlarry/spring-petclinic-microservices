@@ -18,7 +18,7 @@ spec:
 
       containers:
       - name: discovery-server
-        image: 524338476341.dkr.ecr.eu-central-1.amazonaws.com/petclinic-discovery-server:4.0.1
+        image: 524338476341.dkr.ecr.eu-central-1.amazonaws.com/petclinic-discovery-server:latest
 
         ports:
         - containerPort: 8761

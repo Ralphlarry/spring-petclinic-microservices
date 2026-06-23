@@ -24,7 +24,7 @@ spec:
       containers:
       - name: api-gateway
 
-        image: 524338476341.dkr.ecr.eu-central-1.amazonaws.com/petclinic-api-gateway:4.0.1
+        image: 524338476341.dkr.ecr.eu-central-1.amazonaws.com/petclinic-api-gateway:latest
 
         imagePullPolicy: Always
 
