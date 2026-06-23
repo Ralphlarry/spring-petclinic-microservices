@@ -1,0 +1,67 @@
+{{- $root := . -}}
+{{- range $name, $svc := .Values.services }}
+{{- $tag := $svc.tag | default $root.Values.global.imageTag -}}
+{{- $resources := $svc.resources | default $root.Values.defaults.resources -}}
+{{- $probe := $svc.probe | default $root.Values.defaults.probe -}}
+{{- $replicas := $svc.replicas | default $root.Values.defaults.replicas -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $root.Values.global.namespace }}
+  labels:
+    app: {{ $name }}
+    app.kubernetes.io/name: {{ $name }}
+    {{- include "petclinic.labels" $root | nindent 4 }}
+spec:
+  replicas: {{ $replicas }}
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+        app.kubernetes.io/name: {{ $name }}
+        {{- include "petclinic.labels" $root | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        - name: {{ $root.Values.global.imagePullSecret }}
+      containers:
+        - name: {{ $name }}
+          image: "{{ $root.Values.global.registry }}/{{ $svc.image }}:{{ $tag }}"
+          imagePullPolicy: {{ $root.Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ $svc.port }}
+          env:
+            {{- range $root.Values.commonEnv }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            {{- range $svc.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+          resources:
+            requests:
+              cpu: {{ $resources.requests.cpu }}
+              memory: {{ $resources.requests.memory }}
+            limits:
+              cpu: {{ $resources.limits.cpu }}
+              memory: {{ $resources.limits.memory }}
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: {{ $svc.port }}
+            initialDelaySeconds: {{ $probe.readiness.initialDelaySeconds }}
+            periodSeconds: {{ $probe.readiness.periodSeconds }}
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: {{ $svc.port }}
+            initialDelaySeconds: {{ $probe.liveness.initialDelaySeconds }}
+            periodSeconds: {{ $probe.liveness.periodSeconds }}
+{{- end }}

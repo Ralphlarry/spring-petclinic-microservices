@@ -1,0 +1,9 @@
+apiVersion: v2
+name: petclinic
+description: Spring PetClinic microservices on EKS (7 services + ALB ingress). Keeps Eureka discovery + Spring Cloud Config.
+type: application
+version: 0.1.0
+# appVersion tracks the petclinic app image line; image tag is set via values (global.imageTag).
+appVersion: "4.0"
+maintainers:
+  - name: Ralphlarry

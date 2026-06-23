@@ -1,0 +1,96 @@
+# ── PetClinic Helm values ────────────────────────────────────────────────────
+# One chart renders all 7 services. CI/Argo CD bumps a single tag: global.imageTag.
+# This kills the per-manifest hardcoded tags (config-server was :4.0.2, rest :4.0.1).
+
+global:
+  registry: 524338476341.dkr.ecr.eu-central-1.amazonaws.com
+  # The tag every service uses unless a service overrides it below.
+  # CI sets this to the git SHA; Argo CD syncs it.
+  imageTag: "latest"
+  imagePullPolicy: Always
+  imagePullSecret: ecr-secret          # pre-existing Secret in the namespace (NOT created by this chart)
+  namespace: petclinic
+  createNamespace: false                # leave false; let `helm install -n` or Argo CD's CreateNamespace handle it
+
+# Defaults applied to every service unless overridden per-service.
+defaults:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  probe:
+    readiness:
+      initialDelaySeconds: 60
+      periodSeconds: 10
+    liveness:
+      initialDelaySeconds: 120
+      periodSeconds: 20
+
+# Env injected into EVERY service. This is the key tracing fix: every service
+# now exports spans to the Zipkin Service, regardless of Spring profile.
+commonEnv:
+  - name: SPRING_PROFILES_ACTIVE
+    value: "docker"
+  - name: MANAGEMENT_TRACING_EXPORT_ZIPKIN_ENDPOINT
+    value: "http://zipkin:9411/api/v2/spans"
+
+# Per-service definitions. `image` = repo name under global.registry.
+# Optional per-service: tag, replicas, resources, probe, env (merged after commonEnv).
+services:
+  config-server:
+    image: petclinic-config-server
+    port: 8888
+    # config-server has no upstream deps; keep default probes.
+
+  discovery-server:
+    image: petclinic-discovery-server
+    port: 8761
+    env:
+      - name: CONFIG_SERVER_URL
+        value: "http://config-server:8888"
+    probe:
+      readiness:
+        initialDelaySeconds: 90
+        periodSeconds: 10
+      liveness:
+        initialDelaySeconds: 180
+        periodSeconds: 20
+
+  customers-service:
+    image: petclinic-customers-service
+    port: 8081
+
+  vets-service:
+    image: petclinic-vets-service
+    port: 8083
+
+  visits-service:
+    image: petclinic-visits-service
+    port: 8082
+
+  api-gateway:
+    image: petclinic-api-gateway
+    port: 8080
+
+  admin-server:
+    image: petclinic-admin-server
+    port: 9090
+
+# ALB ingress (matches the existing k8s/ingress/ingress.yaml).
+ingress:
+  enabled: true
+  className: alb
+  host: petclinic.ralphnetwork.online
+  certificateArn: "arn:aws:acm:eu-central-1:524338476341:certificate/5a8a3a47-ed58-4262-b31c-92d2fbf649a0"
+  backend:
+    service: api-gateway
+    port: 8080
+
+# NOTE: Prometheus / Grafana / Zipkin are intentionally NOT in this chart.
+# They stay as the existing k8s/ manifests for now. Recommended later: replace
+# Prometheus+Grafana with the community `kube-prometheus-stack` chart and run
+# Zipkin as its own small release. (See MEMORY.md next steps.)

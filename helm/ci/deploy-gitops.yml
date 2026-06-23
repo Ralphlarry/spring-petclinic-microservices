@@ -1,0 +1,106 @@
+# Destination: app repo, .github/workflows/deploy.yml  (REPLACES the current one)
+#
+# GitOps model: CI builds + pushes images, then bumps the chart's image tag and
+# commits it. Argo CD (watching helm/petclinic) syncs the cluster. CI no longer
+# runs `kubectl apply` / `rollout` — that's Argo CD's job now.
+#
+# PREREQUISITES:
+#   - Helm chart committed at helm/petclinic (done).
+#   - Argo CD installed + the Application from helm/argocd-application.yaml applied.
+#   - Repo Settings → Actions → Workflow permissions = "Read and write".
+#
+# LOOP GUARD: this workflow ignores pushes that only touch helm/** (its own tag
+# bump commit), so the bot commit doesn't retrigger a build.
+
+name: Build and Deploy Petclinic (GitOps)
+
+on:
+  push:
+    branches:
+      - main
+      - feature/aws-eks-production-deployment
+    paths-ignore:
+      - 'helm/**'
+      - '**/*.md'
+
+env:
+  AWS_REGION: eu-central-1
+  ECR_REGISTRY: 524338476341.dkr.ecr.eu-central-1.amazonaws.com
+  IMAGE_TAG: ${{ github.sha }}
+  DOCKER_BUILDKIT: 1
+
+permissions:
+  id-token: write      # OIDC to assume the AWS role
+  contents: write      # to commit the tag bump back
+
+jobs:
+  build-push-bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::524338476341:role/GitHubActionsPetclinicRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-buildx-action@v3
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+
+      - name: Build Maven project
+        run: mvn clean package -DskipTests
+
+      - name: Build & push images
+        run: |
+          set -euo pipefail
+          declare -A SVC=(
+            [config-server]=8888 [discovery-server]=8761 [customers-service]=8081
+            [vets-service]=8083 [visits-service]=8082 [api-gateway]=8080 [admin-server]=9090
+          )
+          for svc in "${!SVC[@]}"; do
+            module="spring-petclinic-${svc}"
+            cp ${module}/target/*.jar ${module}/target/application.jar
+            docker build -f docker/Dockerfile \
+              --build-arg ARTIFACT_NAME=${module}/target/application \
+              --build-arg EXPOSED_PORT=${SVC[$svc]} \
+              -t $ECR_REGISTRY/petclinic-${svc}:$IMAGE_TAG \
+              -t $ECR_REGISTRY/petclinic-${svc}:latest .
+            docker push $ECR_REGISTRY/petclinic-${svc}:$IMAGE_TAG
+            docker push $ECR_REGISTRY/petclinic-${svc}:latest
+          done
+
+      - name: Bump chart image tag
+        run: |
+          set -euo pipefail
+          sed -i -E "s/^(\s*imageTag:\s*).*/\1\"${IMAGE_TAG}\"/" helm/petclinic/values.yaml
+          grep -n "imageTag:" helm/petclinic/values.yaml
+
+      - name: Commit tag bump (Argo CD will sync)
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- helm/petclinic/values.yaml; then
+            echo "No tag change."; exit 0
+          fi
+          git add helm/petclinic/values.yaml
+          git commit -m "ci: bump petclinic image tag to ${IMAGE_TAG} [skip ci]"
+          git push origin HEAD:${GITHUB_REF_NAME}
+
+# ── INTERIM ALTERNATIVE (before Argo CD is installed) ────────────────────────
+# Replace the "Commit tag bump" step with a direct Helm release. Requires the CI
+# role to have an EKS access entry (see fixes/cluster-access.tf.snippet):
+#
+#   - name: Install helm
+#     uses: azure/setup-helm@v4
+#   - name: Update kubeconfig
+#     run: aws eks update-kubeconfig --name petclinic-prod --region $AWS_REGION
+#   - name: Helm deploy
+#     run: |
+#       helm upgrade --install petclinic helm/petclinic -n petclinic --create-namespace \
+#         --set global.imageTag=$IMAGE_TAG --wait --timeout 10m
