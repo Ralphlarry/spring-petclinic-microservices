@@ -4,6 +4,7 @@
 {{- $resources := $svc.resources | default $root.Values.defaults.resources -}}
 {{- $probe := $svc.probe | default $root.Values.defaults.probe -}}
 {{- $replicas := $svc.replicas | default $root.Values.defaults.replicas -}}
+{{- $hpa := $svc.hpa | default dict -}}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -15,7 +16,9 @@ metadata:
     app.kubernetes.io/name: {{ $name }}
     {{- include "petclinic.labels" $root | nindent 4 }}
 spec:
-  replicas: {{ $replicas }}
+  {{- if not $hpa.enabled }}
+  replicas: {{ $replicas }}   # omitted when HPA owns scaling (see hpa.yaml + Argo ignoreDifferences)
+  {{- end }}
   selector:
     matchLabels:
       app: {{ $name }}

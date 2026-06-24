@@ -8,9 +8,9 @@ global:
   # CI sets this to the git SHA; Argo CD syncs it.
   imageTag: "0a8ade8267c8c5872755a1ee2a51da8624e5169f"
   imagePullPolicy: Always
-  imagePullSecret: ecr-secret          # pre-existing Secret in the namespace (NOT created by this chart)
+  imagePullSecret: ecr-secret # pre-existing Secret in the namespace (NOT created by this chart)
   namespace: petclinic
-  createNamespace: false                # leave false; let `helm install -n` or Argo CD's CreateNamespace handle it
+  createNamespace: false # leave false; let `helm install -n` or Argo CD's CreateNamespace handle it
 
 # Defaults applied to every service unless overridden per-service.
 defaults:
@@ -60,21 +60,59 @@ services:
         initialDelaySeconds: 180
         periodSeconds: 20
 
+  # Stateless services: autoscale on CPU + protect during node drains.
+  # HPA requires metrics-server in the cluster (see README). When hpa.enabled,
+  # the Deployment omits `replicas` and HPA owns it (Argo ignores that field).
   customers-service:
     image: petclinic-customers-service
     port: 8081
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 70
+    pdb:
+      enabled: true
+      maxUnavailable: 1
 
   vets-service:
     image: petclinic-vets-service
     port: 8083
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 70
+    pdb:
+      enabled: true
+      maxUnavailable: 1
 
   visits-service:
     image: petclinic-visits-service
     port: 8082
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 70
+    pdb:
+      enabled: true
+      maxUnavailable: 1
 
   api-gateway:
     image: petclinic-api-gateway
     port: 8080
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 70
+    pdb:
+      enabled: true
+      maxUnavailable: 1
+
+  # config-server / discovery-server / admin-server stay at fixed single replicas:
+  # Eureka + Config Server are stateful-ish singletons; don't autoscale them here.
 
   admin-server:
     image: petclinic-admin-server

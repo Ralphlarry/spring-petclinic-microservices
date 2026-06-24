@@ -1,0 +1,29 @@
+{{- $root := . -}}
+{{- range $name, $svc := .Values.services }}
+{{- $hpa := $svc.hpa | default dict }}
+{{- if $hpa.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $name }}
+  namespace: {{ $root.Values.global.namespace }}
+  labels:
+    app: {{ $name }}
+    {{- include "petclinic.labels" $root | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $name }}
+  minReplicas: {{ $hpa.minReplicas | default 2 }}
+  maxReplicas: {{ $hpa.maxReplicas | default 4 }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $hpa.targetCPUUtilizationPercentage | default 70 }}
+{{- end }}
+{{- end }}

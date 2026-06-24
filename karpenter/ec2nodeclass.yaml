@@ -1,0 +1,18 @@
+# Karpenter EC2NodeClass (API v1). Defines HOW nodes are launched.
+# Discovers subnets + security groups by the karpenter.sh/discovery tag that the
+# Terraform VPC/EKS modules now set to the cluster name.
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: default
+spec:
+  # Node IAM role created by the Terraform karpenter submodule:
+  role: petclinic-karpenter-node
+  amiSelectorTerms:
+    - alias: al2023@latest          # AL2023, latest EKS-optimized AMI
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: petclinic-prod
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: petclinic-prod

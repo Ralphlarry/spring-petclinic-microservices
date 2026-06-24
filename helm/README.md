@@ -62,8 +62,28 @@ helm upgrade --install petclinic helm/petclinic -n petclinic --create-namespace 
 Once on Argo CD, delete the `Update kubeconfig`, `Update Kubernetes Manifests` (the sed),
 `Deploy to Kubernetes`, and `Wait for Rollout` steps. Keep build + push, then bump the tag.
 
+## Autoscaling + disruption budgets (HPA/PDB)
+The four stateless services (customers, vets, visits, api-gateway) have `hpa` and
+`pdb` enabled in values.yaml (min 2 / max 4 / 70% CPU). config-server,
+discovery-server, and admin-server stay at fixed single replicas (Eureka/Config
+are singletons — don't autoscale them here).
+
+**Prerequisite: metrics-server** (HPA reads CPU from it). The cluster doesn't have
+it yet — install once:
+```bash
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
+helm upgrade --install metrics-server metrics-server/metrics-server -n kube-system
+kubectl top nodes      # should return numbers once it's up
+```
+Without metrics-server the HPAs show `<unknown>/70%` targets and won't scale.
+
+**Argo CD note:** when `hpa.enabled`, the Deployment omits `replicas` and the HPA
+owns it. The Application sets `ignoreDifferences` on `apps/Deployment /spec/replicas`
+so selfHeal doesn't fight the autoscaler. (Re-apply the Application after pulling
+this change: `kubectl apply -f helm/argocd-application.yaml -n argocd`.)
+
 ## Still TODO (deliberately not in this chart)
 - Observability: move Prometheus/Grafana to the community `kube-prometheus-stack`; run Zipkin
   as its own small release.
-- HPA, PodDisruptionBudgets, NetworkPolicies — add as a hardening pass.
+- NetworkPolicies — add carefully (default-deny + explicit allows) so you don't cut service-to-service traffic.
 - genai-service: no manifest today; add a service block here if/when you deploy it.
