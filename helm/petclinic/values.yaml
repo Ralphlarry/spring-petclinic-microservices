@@ -6,7 +6,7 @@ global:
   registry: 524338476341.dkr.ecr.eu-central-1.amazonaws.com
   # The tag every service uses unless a service overrides it below.
   # CI sets this to the git SHA; Argo CD syncs it.
-  imageTag: "0a8ade8267c8c5872755a1ee2a51da8624e5169f"
+  imageTag: "0d6a0587c4a4640be841286d3365371f5cc0a929"
   imagePullPolicy: Always
   imagePullSecret: ecr-secret # pre-existing Secret in the namespace (NOT created by this chart)
   namespace: petclinic
