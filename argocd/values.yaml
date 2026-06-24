@@ -1,0 +1,58 @@
+# Argo CD Helm values — chart: argo/argo-cd (pin ~> 9.7, appVersion ~ v3.4)
+# Tuned for a portfolio / close-to-prod single-cluster EKS setup (cost-conscious,
+# non-HA). Confirm keys against your chart version: `helm show values argo/argo-cd --version 9.7.0`.
+
+global:
+  # Single replicas everywhere (no HA) to keep node footprint small.
+  # Flip the *.replicas below up + enable redis-ha for real HA later.
+
+crds:
+  install: true
+  keep: true        # don't delete CRDs on uninstall
+
+configs:
+  params:
+    # ALB terminates TLS; let argocd-server speak plain HTTP behind it.
+    # Without this you get redirect loops / cert warnings through the ALB.
+    server.insecure: true
+  cm:
+    # Set once you expose the UI on a hostname (used for links/SSO callbacks).
+    url: https://argocd.ralphnetwork.online
+    # Keep the app's Helm releases tidy in the UI:
+    application.resourceTrackingMethod: annotation
+
+# ── Server (UI/API) ──────────────────────────────────────────────────────────
+server:
+  replicas: 1
+  # Optional: expose the UI via the AWS Load Balancer Controller (ALB).
+  # Requires: a DNS record for the hostname + an ACM cert for it.
+  # Until then, leave disabled and use `kubectl port-forward` (see README).
+  ingress:
+    enabled: false
+    ingressClassName: alb
+    hostname: argocd.ralphnetwork.online
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/ssl-redirect: "443"
+      alb.ingress.kubernetes.io/backend-protocol: HTTP
+      # Replace with an ACM cert that covers argocd.ralphnetwork.online:
+      alb.ingress.kubernetes.io/certificate-arn: "REPLACE_WITH_ACM_ARN_FOR_ARGOCD_HOST"
+
+controller:
+  replicas: 1
+
+repoServer:
+  replicas: 1
+
+applicationSet:
+  replicas: 1
+
+# Trim optional components for a lean install (enable later if needed).
+dex:
+  enabled: false            # no external SSO yet (use the local admin user)
+notifications:
+  enabled: false
+redis-ha:
+  enabled: false            # single redis is fine for non-HA
