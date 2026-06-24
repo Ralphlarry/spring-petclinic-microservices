@@ -13,7 +13,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/Ralphlarry/spring-petclinic-microservices.git
-    targetRevision: feature/aws-eks-production-deployment # later: main
+    targetRevision: main
     path: helm/petclinic
     helm:
       valueFiles:
