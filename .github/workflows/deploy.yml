@@ -1,207 +1,87 @@
-name: Build and Deploy Petclinic
+# GitOps pipeline: build + push images, then bump the chart's image tag and
+# commit it. Argo CD (watching helm/petclinic) syncs the cluster. CI does NOT
+# run kubectl/helm — Argo CD owns deploys.
+#
+# Requires: Repo Settings → Actions → Workflow permissions = "Read and write".
+# Loop guard: pushes that only touch helm/** or *.md don't trigger a build, so
+# the bot's tag-bump commit doesn't retrigger this workflow.
+
+name: Build and Deploy Petclinic (GitOps)
 
 on:
   push:
     branches:
       - main
       - feature/aws-eks-production-deployment
+    paths-ignore:
+      - 'helm/**'
+      - '**/*.md'
 
 env:
   AWS_REGION: eu-central-1
   ECR_REGISTRY: 524338476341.dkr.ecr.eu-central-1.amazonaws.com
   IMAGE_TAG: ${{ github.sha }}
-  CLUSTER_NAME: petclinic-prod
   DOCKER_BUILDKIT: 1
 
 permissions:
-  id-token: write
-  contents: read
+  id-token: write      # OIDC to assume the AWS role
+  contents: write      # to commit the tag bump back
 
 jobs:
-  deploy:
+  build-push-bump:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::524338476341:role/GitHubActionsPetclinicRole
-          aws-region: eu-central-1
+          aws-region: ${{ env.AWS_REGION }}
 
       - uses: aws-actions/amazon-ecr-login@v2
-
       - uses: docker/setup-buildx-action@v3
-
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v4
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
           cache: maven
 
-      - name: Build Maven Project
+      - name: Build Maven project
         run: mvn clean package -DskipTests
 
-      - name: Prepare Docker Artifacts
+      - name: Build & push images
         run: |
-          cp spring-petclinic-config-server/target/*.jar spring-petclinic-config-server/target/application.jar
-          cp spring-petclinic-discovery-server/target/*.jar spring-petclinic-discovery-server/target/application.jar
-          cp spring-petclinic-customers-service/target/*.jar spring-petclinic-customers-service/target/application.jar
-          cp spring-petclinic-vets-service/target/*.jar spring-petclinic-vets-service/target/application.jar
-          cp spring-petclinic-visits-service/target/*.jar spring-petclinic-visits-service/target/application.jar
-          cp spring-petclinic-admin-server/target/*.jar spring-petclinic-admin-server/target/application.jar
-          cp spring-petclinic-api-gateway/target/*.jar spring-petclinic-api-gateway/target/application.jar
-
-      - name: Build Docker Images
-        run: |
-          docker build \
-            -f docker/Dockerfile \
-            --build-arg ARTIFACT_NAME=spring-petclinic-config-server/target/application \
-            --build-arg EXPOSED_PORT=8888 \
-            -t $ECR_REGISTRY/petclinic-config-server:$IMAGE_TAG \
-            -t $ECR_REGISTRY/petclinic-config-server:latest .
-
-          docker build \
-            -f docker/Dockerfile \
-            --build-arg ARTIFACT_NAME=spring-petclinic-discovery-server/target/application \
-            --build-arg EXPOSED_PORT=8761 \
-            -t $ECR_REGISTRY/petclinic-discovery-server:$IMAGE_TAG \
-            -t $ECR_REGISTRY/petclinic-discovery-server:latest .
-
-          docker build \
-            -f docker/Dockerfile \
-            --build-arg ARTIFACT_NAME=spring-petclinic-customers-service/target/application \
-            --build-arg EXPOSED_PORT=8081 \
-            -t $ECR_REGISTRY/petclinic-customers-service:$IMAGE_TAG \
-            -t $ECR_REGISTRY/petclinic-customers-service:latest .
-
-          docker build \
-            -f docker/Dockerfile \
-            --build-arg ARTIFACT_NAME=spring-petclinic-vets-service/target/application \
-            --build-arg EXPOSED_PORT=8082 \
-            -t $ECR_REGISTRY/petclinic-vets-service:$IMAGE_TAG \
-            -t $ECR_REGISTRY/petclinic-vets-service:latest .
-
-          docker build \
-            -f docker/Dockerfile \
-            --build-arg ARTIFACT_NAME=spring-petclinic-visits-service/target/application \
-            --build-arg EXPOSED_PORT=8083 \
-            -t $ECR_REGISTRY/petclinic-visits-service:$IMAGE_TAG \
-            -t $ECR_REGISTRY/petclinic-visits-service:latest .
-
-          docker build \
-            -f docker/Dockerfile \
-            --build-arg ARTIFACT_NAME=spring-petclinic-admin-server/target/application \
-            --build-arg EXPOSED_PORT=9090 \
-            -t $ECR_REGISTRY/petclinic-admin-server:$IMAGE_TAG \
-            -t $ECR_REGISTRY/petclinic-admin-server:latest .
-
-          docker build \
-            -f docker/Dockerfile \
-            --build-arg ARTIFACT_NAME=spring-petclinic-api-gateway/target/application \
-            --build-arg EXPOSED_PORT=8080 \
-            -t $ECR_REGISTRY/petclinic-api-gateway:$IMAGE_TAG \
-            -t $ECR_REGISTRY/petclinic-api-gateway:latest .
-
-      - name: Push Docker Images
-        run: |
-          docker push $ECR_REGISTRY/petclinic-config-server:$IMAGE_TAG
-          docker push $ECR_REGISTRY/petclinic-config-server:latest
-          docker push $ECR_REGISTRY/petclinic-discovery-server:$IMAGE_TAG
-          docker push $ECR_REGISTRY/petclinic-discovery-server:latest
-          docker push $ECR_REGISTRY/petclinic-customers-service:$IMAGE_TAG
-          docker push $ECR_REGISTRY/petclinic-customers-service:latest
-          docker push $ECR_REGISTRY/petclinic-vets-service:$IMAGE_TAG
-          docker push $ECR_REGISTRY/petclinic-vets-service:latest
-          docker push $ECR_REGISTRY/petclinic-visits-service:$IMAGE_TAG
-          docker push $ECR_REGISTRY/petclinic-visits-service:latest
-          docker push $ECR_REGISTRY/petclinic-admin-server:$IMAGE_TAG
-          docker push $ECR_REGISTRY/petclinic-admin-server:latest
-          docker push $ECR_REGISTRY/petclinic-api-gateway:$IMAGE_TAG
-          docker push $ECR_REGISTRY/petclinic-api-gateway:latest
-
-      - name: Update kubeconfig
-        run: |
-          aws eks update-kubeconfig \
-            --name $CLUSTER_NAME \
-            --region $AWS_REGION
-
-      - name: Verify Docker Images
-        run: |
-          set -e
-
-          for repo in \
-            petclinic-config-server \
-            petclinic-discovery-server \
-            petclinic-customers-service \
-            petclinic-vets-service \
-            petclinic-visits-service \
-            petclinic-admin-server \
-            petclinic-api-gateway
-          do
-            echo "Checking $repo..."
-
-            aws ecr describe-images \
-            --repository-name "$repo" \
-            --query "sort_by(imageDetails,& imagePushedAt)[-1].imageTags" \
-            --output json
+          set -euo pipefail
+          declare -A SVC=(
+            [config-server]=8888 [discovery-server]=8761 [customers-service]=8081
+            [vets-service]=8083 [visits-service]=8082 [api-gateway]=8080 [admin-server]=9090
+          )
+          for svc in "${!SVC[@]}"; do
+            module="spring-petclinic-${svc}"
+            cp ${module}/target/*.jar ${module}/target/application.jar
+            docker build -f docker/Dockerfile \
+              --build-arg ARTIFACT_NAME=${module}/target/application \
+              --build-arg EXPOSED_PORT=${SVC[$svc]} \
+              -t $ECR_REGISTRY/petclinic-${svc}:$IMAGE_TAG \
+              -t $ECR_REGISTRY/petclinic-${svc}:latest .
+            docker push $ECR_REGISTRY/petclinic-${svc}:$IMAGE_TAG
+            docker push $ECR_REGISTRY/petclinic-${svc}:latest
           done
 
-      - name: Update Kubernetes Manifests
+      - name: Bump chart image tag
         run: |
-          sed -i "s|petclinic-config-server:latest|petclinic-config-server:${IMAGE_TAG}|g" k8s/config-server/deployment.yaml
-          sed -i "s|petclinic-discovery-server:latest|petclinic-discovery-server:${IMAGE_TAG}|g" k8s/discovery-server/deployment.yaml
-          sed -i "s|petclinic-customers-service:latest|petclinic-customers-service:${IMAGE_TAG}|g" k8s/customers-service/customers-service.yaml
-          sed -i "s|petclinic-vets-service:latest|petclinic-vets-service:${IMAGE_TAG}|g" k8s/vets-service/deployment.yaml
-          sed -i "s|petclinic-visits-service:latest|petclinic-visits-service:${IMAGE_TAG}|g" k8s/visits-service/deployment.yaml
-          sed -i "s|petclinic-admin-server:latest|petclinic-admin-server:${IMAGE_TAG}|g" k8s/admin-server/deployment.yaml
-          sed -i "s|petclinic-api-gateway:latest|petclinic-api-gateway:${IMAGE_TAG}|g" k8s/api-gateway/deployment.yaml
+          set -euo pipefail
+          sed -i -E "s/^(\s*imageTag:\s*).*/\1\"${IMAGE_TAG}\"/" helm/petclinic/values.yaml
+          grep -n "imageTag:" helm/petclinic/values.yaml
 
-      - name: Deploy to Kubernetes
+      - name: Commit tag bump (Argo CD will sync)
         run: |
-          kubectl apply -f k8s/namespace/
-          kubectl apply -f k8s/config-server/
-          kubectl apply -f k8s/discovery-server/
-          kubectl apply -f k8s/customers-service/
-          kubectl apply -f k8s/vets-service/
-          kubectl apply -f k8s/visits-service/
-          kubectl apply -f k8s/admin-server/
-          kubectl apply -f k8s/api-gateway/
-          kubectl apply -f k8s/prometheus/
-          kubectl apply -f k8s/grafana/
-          kubectl apply -f k8s/zipkin/
-          kubectl apply -f k8s/ingress/
-
-          kubectl get deployments -n petclinic
-          kubectl get pods -n petclinic -o wide
-          kubectl get svc -n petclinic
-
-          kubectl describe pods -n petclinic
-
-          kubectl logs deployment/api-gateway -n petclinic || true
-          kubectl logs deployment/config-server -n petclinic || true
-          kubectl logs deployment/discovery-server -n petclinic || true
-
-          kubectl get events -n petclinic --sort-by=.metadata.creationTimestamp
-
-      - name: Wait for Rollout
-        run: |
-          kubectl rollout status deployment/config-server -n petclinic --timeout=5m
-          kubectl rollout status deployment/discovery-server -n petclinic --timeout=5m
-          kubectl rollout status deployment/customers-service -n petclinic --timeout=5m
-          kubectl rollout status deployment/vets-service -n petclinic --timeout=5m
-          kubectl rollout status deployment/visits-service -n petclinic --timeout=5m
-          kubectl rollout status deployment/admin-server -n petclinic --timeout=5m
-          kubectl rollout status deployment/api-gateway -n petclinic --timeout=5m
-
-          kubectl get ingress -n petclinic
-          kubectl get endpoints -n petclinic
-
-      - name: Debug failed deployment
-        if: failure()
-        run: |
-          kubectl get pods -n petclinic
-          kubectl describe pods -n petclinic
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- helm/petclinic/values.yaml; then
+            echo "No tag change."; exit 0
+          fi
+          git add helm/petclinic/values.yaml
+          git commit -m "ci: bump petclinic image tag to ${IMAGE_TAG} [skip ci]"
+          git push origin HEAD:${GITHUB_REF_NAME}

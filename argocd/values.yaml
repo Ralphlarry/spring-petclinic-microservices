@@ -1,10 +1,9 @@
-# Argo CD Helm values — chart: argo/argo-cd (pin ~> 9.7, appVersion ~ v3.4)
+# Argo CD Helm values — chart: argo/argo-cd (pin ~> 9.7, appVersion v3.4.x)
 # Tuned for a portfolio / close-to-prod single-cluster EKS setup (cost-conscious,
-# non-HA). Confirm keys against your chart version: `helm show values argo/argo-cd --version 9.7.0`.
-
-global:
-  # Single replicas everywhere (no HA) to keep node footprint small.
-  # Flip the *.replicas below up + enable redis-ha for real HA later.
+# non-HA). Confirm keys: `helm show values argo/argo-cd --version 9.7.0`.
+#
+# NOTE: do NOT add an empty `global:` block — a null `global` overrides the
+# chart's default `global.image` and breaks templating (nil pointer on image.tag).
 
 crds:
   install: true
@@ -14,19 +13,19 @@ configs:
   params:
     # ALB terminates TLS; let argocd-server speak plain HTTP behind it.
     # Without this you get redirect loops / cert warnings through the ALB.
-    server.insecure: true
+    server.insecure: "true"
   cm:
     # Set once you expose the UI on a hostname (used for links/SSO callbacks).
     url: https://argocd.ralphnetwork.online
-    # Keep the app's Helm releases tidy in the UI:
+    # Track resources by annotation (cleaner adoption of existing objects):
     application.resourceTrackingMethod: annotation
 
 # ── Server (UI/API) ──────────────────────────────────────────────────────────
 server:
   replicas: 1
   # Optional: expose the UI via the AWS Load Balancer Controller (ALB).
-  # Requires: a DNS record for the hostname + an ACM cert for it.
-  # Until then, leave disabled and use `kubectl port-forward` (see README).
+  # Requires a DNS record for the hostname + an ACM cert for it.
+  # Until then leave disabled and use `kubectl port-forward` (see README).
   ingress:
     enabled: false
     ingressClassName: alb

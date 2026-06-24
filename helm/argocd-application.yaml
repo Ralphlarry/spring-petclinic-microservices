@@ -25,17 +25,14 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: petclinic
-  # FIRST ADOPTION = MANUAL sync (no `automated` block yet). The app is already
-  # running from raw kubectl apply; apply this Application, review the diff in the
-  # UI, Sync once by hand, confirm Healthy. Expect a one-time rolling restart of
-  # all 7 services (chart adds labels + reconciles the image tag) — that's normal.
-  #
-  # After a clean manual sync: add the automated block below AND switch CI to
-  # helm/ci/deploy-gitops.yml (stop kubectl apply) so CI and Argo don't fight.
-  #   automated:
-  #     prune: true
-  #     selfHeal: true
+  # (History: first adoption was a one-time MANUAL sync of the already-running app.)
+  # Automation ENABLED (CI cutover done 2026-06-24): Argo CD auto-syncs on git
+  # changes, prunes removed resources, and self-heals manual drift. The old
+  # kubectl-apply pipeline has been replaced by the GitOps deploy.yml.
   syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
     syncOptions:
       - CreateNamespace=true
       - ApplyOutOfSyncOnly=true
