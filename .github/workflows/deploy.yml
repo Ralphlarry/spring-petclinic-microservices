@@ -12,7 +12,6 @@ on:
   push:
     branches:
       - main
-      - feature/aws-eks-production-deployment
     paths-ignore:
       - 'helm/**'
       - '**/*.md'
